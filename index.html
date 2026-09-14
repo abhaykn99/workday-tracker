@@ -42,7 +42,7 @@ h2{font-size:16px;margin:0 0 15px;letter-spacing:-.15px}.status{display:flex;ali
     <button onclick="startActivity()" class="primary">Start activity</button>
   </div>
   <div style="margin-top:8px;color:#667085;font-size:12px">Activities run only while <b>.ready</b> is active. Changing to <b>.break</b>, <b>.lunch</b>, or <b>.personal time</b> pauses the activity; returning to <b>.ready</b> resumes it automatically.</div>
-  <div style="margin-top:8px;color:#667085;font-size:12px">🔔 Automatic push notifications are sent for work-state changes, activity start/resume, break/lunch reminders, and logoff when notifications are enabled.</div>
+  <div style="margin-top:8px;color:#667085;font-size:12px">🔔 Automatic push notifications cover work-state changes, activity start/resume, timed break/lunch reminders, and a logoff summary when notifications are enabled.</div>
 </section>
 
 <section class="card">
@@ -116,11 +116,14 @@ function cmd(type){
  const d=db[today];
  if(type==='logoff'){
    closeCurrent(); addEvent('logoff');
-   sendPushNotification('🔴 My WorkDay','WorkDay finished. Your daily report is ready.','logoff-'+today);
+   const report=makeReport();
+   const summary=`WorkDay finished. Ready/productive: ${fmt(intervals('ready')+intervals('logon'))}. Coding: ${fmt(activityTime('Coding'))}. Learning: ${fmt(activityTime('Learning'))}. Job applications: ${fmt(activityTime('Job Applications'))}.`;
+   sendPushNotification('🔴 My WorkDay',summary+' Daily report is ready.','logoff-'+today);
    cancelServerSchedule();
    return;
  }
  if(type==='logon'){
+   cancelServerSchedule();
    if(d.current) closeCurrent();
    d.current={type:'logon',start:now()};
    addEvent('logon'); save(); render();
@@ -132,6 +135,8 @@ function cmd(type){
  if(type==='break45' && breakSlots(45).length>=2){alert('Both 45-minute breaks have already been used today.');return}
  if(type==='lunch' && breakSlots(60).length>=1){alert('Your 60-minute lunch has already been used today.');return}
  if(type==='lunch' || type==='break45' || type==='personal' || type==='ready'){
+   const leavingTimedBreak=d.current && (d.current.type==='lunch'||d.current.type==='break45') && d.current.type!==type;
+   if(leavingTimedBreak) cancelServerSchedule();
    if(type!=='ready' && d.current.type==='ready') pauseActivity();
    if(d.current){d.current.end=now();d.events.push({...d.current,type:d.current.type+'_end'});}
    d.current={type:type,start:now()};
@@ -362,8 +367,8 @@ async function enableNotifications(){
 async function sendPushNotification(title, body, tag='my-workday'){
   try{
     if(!('Notification' in window) || Notification.permission!=='granted') return false;
-    await getPushSubscription();
-    const r=await fetch(PUSH_SERVER+'/send-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,body,url:location.href,tag})});
+    const sub=await getPushSubscription();
+    const r=await fetch(PUSH_SERVER+'/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint,title,body,url:location.href,tag})});
     const data=await r.json().catch(()=>({}));
     return !!(r.ok && data.ok && data.sent>0);
   }catch(e){ console.warn('Automatic push failed:',e); return false; }
