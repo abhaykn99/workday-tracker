@@ -42,6 +42,7 @@ h2{font-size:16px;margin:0 0 15px;letter-spacing:-.15px}.status{display:flex;ali
     <button onclick="startActivity()" class="primary">Start activity</button>
   </div>
   <div style="margin-top:8px;color:#667085;font-size:12px">Activities run only while <b>.ready</b> is active. Changing to <b>.break</b>, <b>.lunch</b>, or <b>.personal time</b> pauses the activity; returning to <b>.ready</b> resumes it automatically.</div>
+  <div style="margin-top:8px;color:#667085;font-size:12px">🔔 Automatic push notifications are sent for work-state changes, activity start/resume, break/lunch reminders, and logoff when notifications are enabled.</div>
 </section>
 
 <section class="card">
@@ -83,7 +84,8 @@ h2{font-size:16px;margin:0 0 15px;letter-spacing:-.15px}.status{display:flex;ali
 const KEY='workday-tracker-v1';
 let db=JSON.parse(localStorage.getItem(KEY)||'{}');
 let today=localDate();
-if(!db[today]) db[today]={events:[], current:null, activity:null, activityStarted:null};
+if(!db[today]) db[today]={events:[], current:null, activity:null, activityStarted:null, breakFiveMinuteNotified:false};
+if(typeof db[today].breakFiveMinuteNotified!=='boolean') db[today].breakFiveMinuteNotified=false;
 function localDate(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function save(){localStorage.setItem(KEY,JSON.stringify(db))}
 function now(){return Date.now()}
@@ -106,36 +108,56 @@ function resumeActivity(){
  if(d.activity && !d.activityStarted && d.current?.type==='ready'){
    d.activityStarted=now();
    d.events.push({ts:d.activityStarted,type:'activity_resume',note:d.activity});
+   sendPushNotification('▶️ My WorkDay',d.activity+' resumed.','activity-resume-'+today+'-'+now());
  }
 }
 function closeCurrent(){const d=db[today]; if(d.current){d.current.end=now(); d.events.push({...d.current, type:d.current.type+'_end'}); d.current=null} endActivitySegment('activity_end');}
 function cmd(type){
  const d=db[today];
- if(type==='logoff'){closeCurrent();addEvent('logoff');return}
- if(type==='logon'){if(d.current) closeCurrent(); d.current={type:'logon',start:now()}; addEvent('logon'); save();render();return}
+ if(type==='logoff'){
+   closeCurrent(); addEvent('logoff');
+   sendPushNotification('🔴 My WorkDay','WorkDay finished. Your daily report is ready.','logoff-'+today);
+   return;
+ }
+ if(type==='logon'){
+   if(d.current) closeCurrent();
+   d.current={type:'logon',start:now()};
+   addEvent('logon'); save(); render();
+   sendPushNotification('🟢 My WorkDay','.logon — your workday has started.','logon-'+today);
+   return;
+ }
  if(!d.current){alert('Log on first.');return}
  const labels={ready:'Ready',lunch:'Lunch (60 min)',break45:'Break (45 min)',personal:'Personal time'};
  if(type==='break45' && breakSlots(45).length>=2){alert('Both 45-minute breaks have already been used today.');return}
  if(type==='lunch' && breakSlots(60).length>=1){alert('Your 60-minute lunch has already been used today.');return}
  if(type==='lunch' || type==='break45' || type==='personal' || type==='ready'){
-   // Activities are only live while Work Control is .ready. Changing to any
-   // non-ready control pauses the current activity without losing it.
    if(type!=='ready' && d.current.type==='ready') pauseActivity();
    if(d.current){d.current.end=now();d.events.push({...d.current,type:d.current.type+'_end'});}
    d.current={type:type,start:now()};
    d.events.push({ts:now(),type,note:labels[type]});
    if(type==='ready') resumeActivity();
+   if(type==='lunch' || type==='break45') d.breakFiveMinuteNotified=false;
    save();render();
+   const messages={
+     ready:['▶️ My WorkDay','.ready — you are ready to work.'],
+     lunch:['🍱 My WorkDay','Lunch started — 60 minutes.'],
+     break45:['☕ My WorkDay','Break started — 45 minutes.'],
+     personal:['👤 My WorkDay','Personal time started.']
+   };
+   if(messages[type]) sendPushNotification(messages[type][0],messages[type][1],type+'-'+today+'-'+now());
  }
 }
+
 function startActivity(){
  const d=db[today];
  if(!d.current){alert('Log on first.');return}
  if(d.current.type!=='ready'){alert('Activities can run only while Work Control is .ready. Your current activity will resume automatically when you return to .ready.');return}
  if(d.activity) endActivitySegment('activity_end');
  d.activity=document.getElementById('activity').value; d.activityStarted=now();
- d.events.push({ts:d.activityStarted,type:'activity_start',note:d.activity});save();render()
+ d.events.push({ts:d.activityStarted,type:'activity_start',note:d.activity});save();render();
+ sendPushNotification('💻 My WorkDay',d.activity+' started.','activity-start-'+today+'-'+now());
 }
+
 function intervals(type){
  const ev=db[today].events, out=[]; let start=null;
  for(const e of ev){if(e.type===type)start=e.ts; if(e.type===type+'_end'&&start){out.push([start,e.ts]);start=null}}
@@ -161,13 +183,20 @@ function activeBreakLimit(){
 function enforceBreakLimit(){
  const d=db[today], limit=activeBreakLimit();
  if(!limit) return;
- const elapsed=(now()-d.current.start)/60000;
- if(elapsed>=limit){
+ const elapsed=now()-d.current.start;
+ const remaining=limit*60000-elapsed;
+ if(remaining<=5*60000 && remaining>0 && !d.breakFiveMinuteNotified){
+   d.breakFiveMinuteNotified=true; save();
+   sendPushNotification('⏰ My WorkDay',(d.current.type==='lunch'?'Lunch':'Break')+' has 5 minutes remaining.','five-min-'+today+'-'+d.current.start);
+ }
+ if(elapsed>=limit*60000){
    const type=d.current.type; d.current.end=d.current.start+limit*60000;
    d.events.push({...d.current,type:type+'_end',note:(type==='lunch'?'Lunch':'Break')+' completed automatically at '+limit+' minutes'});
    d.current={type:'ready',start:now()};
    d.events.push({ts:now(),type:'ready',note:'Break finished — returned to Ready'});
+   d.breakFiveMinuteNotified=false;
    save();
+   sendPushNotification('✅ My WorkDay',(type==='lunch'?'Lunch':'Break')+' finished — returned to .ready.','break-finished-'+today+'-'+now());
  }
 }
 function render(){
@@ -272,7 +301,7 @@ function downloadCSV(){
  download('workday-events-'+today+'.csv',rows.map(r=>r.map(x=>`"${String(x).replaceAll('"','""')}"`).join(',')).join('\\n'),'text/csv')
 }
 function download(name,data,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-function clearToday(){if(confirm('Delete all tracking data for today?')){delete db[today];db[today]={events:[],current:null,activity:null,activityStarted:null};save();render()}}
+function clearToday(){if(confirm('Delete all tracking data for today?')){delete db[today];db[today]={events:[],current:null,activity:null,activityStarted:null,breakFiveMinuteNotified:false};save();render()}}
 const PUSH_SERVER='https://my-workday-push-server.onrender.com';
 function urlBase64ToUint8Array(base64String){
   const padding='='.repeat((4-base64String.length%4)%4);
@@ -302,6 +331,16 @@ async function enableNotifications(){
     alert('✅ This iPhone is registered for My WorkDay push notifications. Tap Test push to verify it.');
   }catch(e){alert('Could not enable push notifications: '+e.message)}
 }
+async function sendPushNotification(title, body, tag='my-workday'){
+  try{
+    if(!('Notification' in window) || Notification.permission!=='granted') return false;
+    await getPushSubscription();
+    const r=await fetch(PUSH_SERVER+'/send-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,body,url:location.href,tag})});
+    const data=await r.json().catch(()=>({}));
+    return !!(r.ok && data.ok && data.sent>0);
+  }catch(e){ console.warn('Automatic push failed:',e); return false; }
+}
+
 async function sendTestPush(){
   try{
     await getPushSubscription();
