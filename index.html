@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f172a">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
 <title>WorkDay Tracker — Focus Dashboard</title>
 <style>
 :root{--bg:#f4f7fb;--card:#fff;--text:#142033;--muted:#667085;--line:#e7ebf2;--blue:#2563eb;--green:#16a34a;--amber:#d97706;--purple:#7c3aed;--red:#dc2626;--shadow:0 10px 30px rgba(16,24,40,.07)}
@@ -52,6 +55,7 @@ h2{font-size:16px;margin:0 0 15px;letter-spacing:-.15px}.status{display:flex;ali
   <h2 style="margin-top:18px">Break allowance</h2>
   <div id="breaks"></div>
   <div class="actions">
+    <button onclick="enableNotifications()" class="dark">🔔 Enable notifications</button>
     <button onclick="downloadCSV()">Export CSV</button>
     <button onclick="downloadReport()">Daily report</button>
     <button onclick="clearToday()" class="danger">Clear today</button>
@@ -269,6 +273,20 @@ function downloadCSV(){
 }
 function download(name,data,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function clearToday(){if(confirm('Delete all tracking data for today?')){delete db[today];db[today]={events:[],current:null,activity:null,activityStarted:null};save();render()}}
+async function enableNotifications(){
+  if(!('Notification' in window)){alert('Notifications are not supported on this device/browser.');return;}
+  if(location.protocol!=='https:' && location.hostname!=='localhost'){alert('Notifications require the HTTPS GitHub Pages version of this app.');return;}
+  try{
+    const permission=await Notification.requestPermission();
+    if(permission==='granted'){
+      alert('Notifications are enabled for this web app. Remote iPhone/Apple Watch push will be connected in the next step.');
+      new Notification('WorkDay Tracker',{body:'Notifications are enabled.'});
+    }else{
+      alert('Notification permission was not granted. You can change it later in iPhone Settings.');
+    }
+  }catch(e){alert('Could not enable notifications: '+e.message)}
+}
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}
 setInterval(render,1000);render();
 </script>
 </body></html>
