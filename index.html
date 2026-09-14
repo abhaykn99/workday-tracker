@@ -117,6 +117,7 @@ function cmd(type){
  if(type==='logoff'){
    closeCurrent(); addEvent('logoff');
    sendPushNotification('🔴 My WorkDay','WorkDay finished. Your daily report is ready.','logoff-'+today);
+   cancelServerSchedule();
    return;
  }
  if(type==='logon'){
@@ -145,6 +146,7 @@ function cmd(type){
      personal:['👤 My WorkDay','Personal time started.']
    };
    if(messages[type]) sendPushNotification(messages[type][0],messages[type][1],type+'-'+today+'-'+now());
+   if(type==='lunch' || type==='break45') scheduleActiveBreak();
  }
 }
 
@@ -187,7 +189,6 @@ function enforceBreakLimit(){
  const remaining=limit*60000-elapsed;
  if(remaining<=5*60000 && remaining>0 && !d.breakFiveMinuteNotified){
    d.breakFiveMinuteNotified=true; save();
-   sendPushNotification('⏰ My WorkDay',(d.current.type==='lunch'?'Lunch':'Break')+' has 5 minutes remaining.','five-min-'+today+'-'+d.current.start);
  }
  if(elapsed>=limit*60000){
    const type=d.current.type; d.current.end=d.current.start+limit*60000;
@@ -196,7 +197,6 @@ function enforceBreakLimit(){
    d.events.push({ts:now(),type:'ready',note:'Break finished — returned to Ready'});
    d.breakFiveMinuteNotified=false;
    save();
-   sendPushNotification('✅ My WorkDay',(type==='lunch'?'Lunch':'Break')+' finished — returned to .ready.','break-finished-'+today+'-'+now());
  }
 }
 function render(){
@@ -321,6 +321,33 @@ async function getPushSubscription(){
   if(!sr.ok) throw new Error('Could not register this iPhone with the push server.');
   return sub;
 }
+async function syncServerSchedule(notifications=[]){
+  try{
+    if(!('Notification' in window) || Notification.permission!=='granted') return false;
+    const sub=await getPushSubscription();
+    const r=await fetch(PUSH_SERVER+'/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:sub,notifications})});
+    return r.ok;
+  }catch(e){ console.warn('Server scheduling failed:',e); return false; }
+}
+async function cancelServerSchedule(){
+  try{
+    if(!('Notification' in window) || Notification.permission!=='granted') return false;
+    const sub=await getPushSubscription();
+    const r=await fetch(PUSH_SERVER+'/schedule/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint})});
+    return r.ok;
+  }catch(e){ console.warn('Server schedule cancel failed:',e); return false; }
+}
+function scheduleActiveBreak(){
+  const d=db[today]; const limit=activeBreakLimit();
+  if(!limit || !d.current?.start) return;
+  const end=d.current.start+limit*60000;
+  const five=end-5*60000;
+  const type=d.current.type==='lunch'?'Lunch':'Break';
+  const items=[];
+  if(five>Date.now()) items.push({id:'five-'+today+'-'+d.current.start,sendAt:five,title:'⏰ My WorkDay',body:type+' has 5 minutes remaining.',url:location.href,tag:'five-'+today+'-'+d.current.start});
+  if(end>Date.now()) items.push({id:'end-'+today+'-'+d.current.start,sendAt:end,title:'✅ My WorkDay',body:type+' finished — returned to .ready.',url:location.href,tag:'end-'+today+'-'+d.current.start});
+  syncServerSchedule(items);
+}
 async function enableNotifications(){
   if(!('Notification' in window)){alert('Notifications are not supported on this device/browser.');return;}
   if(location.protocol!=='https:' && location.hostname!=='localhost'){alert('Notifications require the HTTPS GitHub Pages version of this app.');return;}
@@ -328,6 +355,7 @@ async function enableNotifications(){
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){alert('Notification permission was not granted. You can change it later in iPhone Settings.');return;}
     await getPushSubscription();
+    scheduleActiveBreak();
     alert('✅ This iPhone is registered for My WorkDay push notifications. Tap Test push to verify it.');
   }catch(e){alert('Could not enable push notifications: '+e.message)}
 }
@@ -350,7 +378,8 @@ async function sendTestPush(){
     alert('✅ Test push sent. Lock the iPhone and check for the notification.');
   }catch(e){alert('Test push failed: '+e.message)}
 }
-if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}
+if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('./service-worker.js').catch(console.error); setTimeout(scheduleActiveBreak,1500);});}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden) scheduleActiveBreak();});
 setInterval(render,1000);render();
 </script>
 </body></html>
