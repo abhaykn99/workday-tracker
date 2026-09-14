@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WorkDay Tracker — Focus Dashboard</title>
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--text:#142033;--muted:#667085;--line:#e7ebf2;--blue:#2563eb;--green:#16a34a;--amber:#d97706;--purple:#7c3aed;--red:#dc2626;--shadow:0 10px 30px rgba(16,24,40,.07)}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(180deg,#eef4ff 0,#f7f9fc 230px,#f4f7fb 100%);color:var(--text)}
+header{background:#0f172a;color:#fff;padding:22px 28px;display:flex;justify-content:space-between;align-items:center;gap:20px;box-shadow:0 4px 18px #0f172a25}h1{font-size:24px;margin:0 0 4px;letter-spacing:-.4px}header small{color:#b8c4d8}.date-pill{background:#1e293b;border:1px solid #334155;padding:9px 13px;border-radius:999px;font-size:13px}
+.wrap{max-width:1240px;margin:24px auto;padding:0 18px}.grid{display:grid;grid-template-columns:1.15fr .85fr;gap:18px}.card{background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:var(--shadow)}
+h2{font-size:16px;margin:0 0 15px;letter-spacing:-.15px}.status{display:flex;align-items:center;justify-content:space-between;padding:18px;border:1px solid var(--line);border-radius:15px;background:linear-gradient(135deg,#f8fbff,#f5f7ff);margin-bottom:15px}.status-left{display:flex;align-items:center;gap:12px}.dot{width:12px;height:12px;border-radius:50%;background:#94a3b8;box-shadow:0 0 0 5px #e2e8f0}.dot.on{background:var(--green);box-shadow:0 0 0 5px #dcfce7}.state-name{font-weight:750;font-size:17px}.since{color:var(--muted);font-size:12px;margin-top:3px}.clock{font-size:30px;font-weight:800;letter-spacing:1px;font-variant-numeric:tabular-nums}
+.buttons{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}.code-btn{position:relative;text-align:left;min-height:72px;padding:12px 13px;border:1px solid var(--line);border-radius:14px;background:#fff;color:var(--text);transition:.18s;box-shadow:0 2px 5px #10182808}.code-btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 14px #10182812}.code-btn .icon{font-size:20px;display:block;margin-bottom:6px}.code-btn .code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;font-weight:800}.code-btn .label{font-size:11px;color:var(--muted);display:block;margin-top:2px}.code-btn.active{border:2px solid var(--blue);background:#eff6ff;box-shadow:0 0 0 4px #dbeafe}.code-btn.active .code{color:var(--blue)}.code-btn:disabled{opacity:.38;cursor:not-allowed;filter:grayscale(.2)}
+.activity{display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:16px}.activity select{width:100%;padding:12px;border:1px solid var(--line);border-radius:11px;background:#fff;font-weight:650}button{border:0;border-radius:11px;padding:11px 14px;font-weight:750;cursor:pointer;transition:.15s}button:hover:not(:disabled){transform:translateY(-1px)}button.primary{background:var(--blue);color:#fff}button.dark{background:#334155;color:#fff}button.warn{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa}button.danger{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}button:disabled{opacity:.45;cursor:not-allowed}.hint{margin-top:10px;color:var(--muted);font-size:12px;line-height:1.5}
+.metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:11px}.metric{padding:15px;border:1px solid var(--line);border-radius:14px;background:#fbfcfe}.metric b{font-size:23px;display:block;margin-bottom:3px}.metric span{color:var(--muted);font-size:12px}.metric .mini-icon{font-size:18px;margin-right:5px}.bar{height:8px;background:#edf1f7;border-radius:20px;overflow:hidden;margin-top:8px}.fill{height:100%;background:var(--blue);width:0;transition:width .25s}
+.section-title{display:flex;align-items:center;justify-content:space-between;gap:10px}.badge{font-size:11px;padding:5px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-weight:750}.log-wrap{overflow:auto;border:1px solid var(--line);border-radius:13px}table{width:100%;border-collapse:collapse;font-size:13px;min-width:620px}th,td{text-align:left;padding:11px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;background:#fafbfc}tr:last-child td{border-bottom:0}.event-icon{margin-right:7px}pre{white-space:pre-wrap;font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;background:#0b1220;color:#dbeafe;border-radius:13px;padding:16px;max-height:360px;overflow:auto}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}
+
+.timeline{display:flex;flex-direction:column;gap:10px}.timeline-item{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;padding:13px;border:1px solid var(--line);border-radius:13px;background:#fbfcfe}.timeline-icon{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:20px;background:#eef2ff}.timeline-main strong{display:block;font-size:13px}.timeline-main span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.timeline-duration{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;font-weight:800;white-space:nowrap}.empty-log{text-align:center;padding:25px;color:var(--muted);font-size:13px}
+@media(max-width:800px){header{padding:18px}.grid{grid-template-columns:1fr}.buttons{grid-template-columns:repeat(2,1fr)}.activity{grid-template-columns:1fr}.clock{font-size:24px}.card{padding:16px}}
+</style>
+</head>
+<body>
+<header><div><h1>WorkDay Tracker</h1><small>Focus dashboard · Coding · Learning · Job Applications</small></div><div id="dateLabel" class="date-pill"></div></header>
+<div class="wrap">
+<div class="grid">
+<section class="card">
+  <div class="section-title"><h2>Work controls</h2><span class="badge">One active code</span></div>
+  <div class="status"><div><span id="dot" class="dot"></span><b id="state">Logged off</b><div id="stateSince" style="color:#667085;font-size:12px"></div></div><div class="clock" id="clock">00:00:00</div></div>
+  <div class="buttons">
+    <button class="code-btn" id="btn-logon" onclick="cmd('logon')"><span class="icon">🔐</span><span class="code">.logon</span><span class="label">Start day</span></button>
+    <button class="code-btn" id="btn-ready" onclick="cmd('ready')"><span class="icon">🟢</span><span class="code">.ready</span><span class="label">Available / work</span></button>
+    <button class="code-btn" id="btn-lunch" onclick="cmd('lunch')"><span class="icon">🍱</span><span class="code">.lunch</span><span class="label">60 min</span></button>
+    <button class="code-btn" id="btn-break45" onclick="cmd('break45')"><span class="icon">☕</span><span class="code">.break</span><span class="label">45 min</span></button>
+    <button class="code-btn" id="btn-personal" onclick="cmd('personal')"><span class="icon">👤</span><span class="code">.personal time</span><span class="label">Personal</span></button>
+    <button class="code-btn" id="btn-logoff" onclick="cmd('logoff')"><span class="icon">🔒</span><span class="code">.logoff</span><span class="label">End day</span></button>
+  </div>
+  <div style="margin-top:14px" class="activity">
+    <select id="activity"><option>Coding</option><option>Learning</option><option>Job Applications</option><option>Interview Preparation</option><option>Project Work</option><option>Other</option></select>
+    <button onclick="startActivity()" class="primary">Start activity</button>
+  </div>
+  <div style="margin-top:8px;color:#667085;font-size:12px">Activities run only while <b>.ready</b> is active. Changing to <b>.break</b>, <b>.lunch</b>, or <b>.personal time</b> pauses the activity; returning to <b>.ready</b> resumes it automatically.</div>
+</section>
+
+<section class="card">
+  <div class="section-title"><h2>Today's summary</h2><span class="badge">Live</span></div>
+  <div class="metrics">
+    <div class="metric"><b id="work">0m</b><span><span class="mini-icon">⚡</span>Ready / productive</span></div>
+    <div class="metric"><b id="coding">0m</b><span><span class="mini-icon">💻</span>Coding</span></div>
+    <div class="metric"><b id="learning">0m</b><span><span class="mini-icon">📚</span>Learning</span></div>
+    <div class="metric"><b id="jobs">0m</b><span><span class="mini-icon">📨</span>Job applications</span></div>
+  </div>
+  <h2 style="margin-top:18px">Break allowance</h2>
+  <div id="breaks"></div>
+  <div class="actions">
+    <button onclick="downloadCSV()">Export CSV</button>
+    <button onclick="downloadReport()">Daily report</button>
+    <button onclick="clearToday()" class="danger">Clear today</button>
+  </div>
+</section>
+</div>
+
+<section class="card" style="margin-top:18px">
+<div class="section-title"><h2>Today's activity log</h2><span id="eventCount" class="badge">0 events</span></div>
+<div class="log-wrap"><table><thead><tr><th>Time</th><th>Command / Activity</th><th>Note</th></tr></thead><tbody id="log"></tbody></table></div>
+</section>
+
+<section class="card" style="margin-top:18px">
+<div class="section-title"><h2>Activity timeline</h2><span class="badge">What you worked on</span></div>
+<div id="activityTimeline" class="timeline"></div>
+</section>
+
+<section class="card" style="margin-top:18px">
+<h2>Daily report preview</h2>
+<pre id="report"></pre>
+</section>
+</div>
+
+<script>
+const KEY='workday-tracker-v1';
+let db=JSON.parse(localStorage.getItem(KEY)||'{}');
+let today=localDate();
+if(!db[today]) db[today]={events:[], current:null, activity:null, activityStarted:null};
+function localDate(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function save(){localStorage.setItem(KEY,JSON.stringify(db))}
+function now(){return Date.now()}
+function fmt(ms){let s=Math.max(0,Math.floor(ms/1000)),h=Math.floor(s/3600);s%=3600;let m=Math.floor(s/60);s%=60;return (h?h+'h ':'')+(m?m+'m ':'')+s+'s'}
+function minutes(ms){return Math.round(ms/60000)}
+function addEvent(type,note=''){db[today].events.push({ts:now(),type,note});save();render()}
+function endActivitySegment(reason='activity_end'){
+ const d=db[today];
+ if(d.activity && d.activityStarted){
+   d.events.push({ts:now(),type:reason,note:d.activity});
+   d.activityStarted=null;
+ }
+}
+function pauseActivity(){
+ const d=db[today];
+ if(d.activity && d.activityStarted) endActivitySegment('activity_pause');
+}
+function resumeActivity(){
+ const d=db[today];
+ if(d.activity && !d.activityStarted && d.current?.type==='ready'){
+   d.activityStarted=now();
+   d.events.push({ts:d.activityStarted,type:'activity_resume',note:d.activity});
+ }
+}
+function closeCurrent(){const d=db[today]; if(d.current){d.current.end=now(); d.events.push({...d.current, type:d.current.type+'_end'}); d.current=null} endActivitySegment('activity_end');}
+function cmd(type){
+ const d=db[today];
+ if(type==='logoff'){closeCurrent();addEvent('logoff');return}
+ if(type==='logon'){if(d.current) closeCurrent(); d.current={type:'logon',start:now()}; addEvent('logon'); save();render();return}
+ if(!d.current){alert('Log on first.');return}
+ const labels={ready:'Ready',lunch:'Lunch (60 min)',break45:'Break (45 min)',personal:'Personal time'};
+ if(type==='break45' && breakSlots(45).length>=2){alert('Both 45-minute breaks have already been used today.');return}
+ if(type==='lunch' && breakSlots(60).length>=1){alert('Your 60-minute lunch has already been used today.');return}
+ if(type==='lunch' || type==='break45' || type==='personal' || type==='ready'){
+   // Activities are only live while Work Control is .ready. Changing to any
+   // non-ready control pauses the current activity without losing it.
+   if(type!=='ready' && d.current.type==='ready') pauseActivity();
+   if(d.current){d.current.end=now();d.events.push({...d.current,type:d.current.type+'_end'});}
+   d.current={type:type,start:now()};
+   d.events.push({ts:now(),type,note:labels[type]});
+   if(type==='ready') resumeActivity();
+   save();render();
+ }
+}
+function startActivity(){
+ const d=db[today];
+ if(!d.current){alert('Log on first.');return}
+ if(d.current.type!=='ready'){alert('Activities can run only while Work Control is .ready. Your current activity will resume automatically when you return to .ready.');return}
+ if(d.activity) endActivitySegment('activity_end');
+ d.activity=document.getElementById('activity').value; d.activityStarted=now();
+ d.events.push({ts:d.activityStarted,type:'activity_start',note:d.activity});save();render()
+}
+function intervals(type){
+ const ev=db[today].events, out=[]; let start=null;
+ for(const e of ev){if(e.type===type)start=e.ts; if(e.type===type+'_end'&&start){out.push([start,e.ts]);start=null}}
+ const d=db[today]; if(d.current?.type===type)out.push([d.current.start,now()]);
+ return out.reduce((a,x)=>a+x[1]-x[0],0)
+}
+function breakSlots(minAllowed){
+ const type=minAllowed===60?'lunch':'break45';
+ const ev=db[today].events, out=[]; let start=null;
+ for(const e of ev){
+   if(e.type===type){ start=e.ts; }
+   else if(e.type===type+'_end' && start!==null){ out.push([start,e.ts]); start=null; }
+ }
+ const d=db[today];
+ if(d.current?.type===type && d.current.start) out.push([d.current.start,now()]);
+ return out;
+}
+function breakUsed(minAllowed){ return breakSlots(minAllowed).length; }
+function activeBreakLimit(){
+ const t=db[today].current?.type;
+ return t==='lunch'?60:t==='break45'?45:null;
+}
+function enforceBreakLimit(){
+ const d=db[today], limit=activeBreakLimit();
+ if(!limit) return;
+ const elapsed=(now()-d.current.start)/60000;
+ if(elapsed>=limit){
+   const type=d.current.type; d.current.end=d.current.start+limit*60000;
+   d.events.push({...d.current,type:type+'_end',note:(type==='lunch'?'Lunch':'Break')+' completed automatically at '+limit+' minutes'});
+   d.current={type:'ready',start:now()};
+   d.events.push({ts:now(),type:'ready',note:'Break finished — returned to Ready'});
+   save();
+ }
+}
+function render(){
+ enforceBreakLimit();
+ const d=db[today]; document.getElementById('dateLabel').textContent=today;
+ const current=d.current, state=current?({logon:'Working',ready:'Ready',lunch:'Lunch',break45:'Break',personal:'Personal time'}[current.type]||current.type):'Logged off';
+ document.getElementById('state').textContent=state;
+ document.getElementById('dot').className='dot '+(current?'on':'');
+ document.getElementById('stateSince').textContent=current?'Since '+new Date(current.start).toLocaleTimeString():'';
+ const productive=intervals('ready')+intervals('logon');
+ const types=['logon','ready','lunch','break45','personal','logoff'];
+ types.forEach(t=>{const b=document.getElementById('btn-'+t); if(b) b.classList.toggle('active',current?.type===t)});
+ document.getElementById('btn-logon').disabled=!!current;
+ document.getElementById('btn-ready').disabled=!current||current.type==='ready';
+ document.getElementById('btn-lunch').disabled=!current||current.type==='lunch'||breakUsed(60)>=1;
+ document.getElementById('btn-break45').disabled=!current||current.type==='break45'||breakUsed(45)>=2;
+ document.getElementById('btn-personal').disabled=!current||current.type==='personal';
+ document.getElementById('btn-logoff').disabled=!current;
+
+ document.getElementById('clock').textContent=fmt(current?now()-current.start:0);
+ document.getElementById('work').textContent=fmt(productive);
+ document.getElementById('coding').textContent=fmt(activityTime('Coding'));
+ document.getElementById('learning').textContent=fmt(activityTime('Learning'));
+ document.getElementById('jobs').textContent=fmt(activityTime('Job Applications'));
+ const lunch=breakSlots(60), breaks45=breakSlots(45), activeLimit=activeBreakLimit();
+ const activeElapsed=activeLimit?(now()-d.current.start):0, activeRemaining=activeLimit?Math.max(0,activeLimit*60000-activeElapsed):0;
+ const lunchUsed=lunch.length>=1, b1=breaks45.length>=1, b2=breaks45.length>=2;
+ document.getElementById('breaks').innerHTML=`
+ <div style="display:flex;justify-content:space-between;gap:10px"><b>🍱 Lunch</b><span>${lunchUsed?'Used':'Available'}</span></div>
+ <div class="bar"><div class="fill" style="width:${lunchUsed?100:0}%"></div></div>
+ <div style="margin-top:8px;color:#667085;font-size:12px">60-minute allowance · ${lunchUsed?'completed':'1 remaining'}</div>
+ <div style="margin-top:16px;display:flex;justify-content:space-between;gap:10px"><b>☕ 45-minute breaks</b><span>${breaks45.length}/2 used</span></div>
+ <div class="bar"><div class="fill" style="width:${Math.min(100,breaks45.length/2*100)}%"></div></div>
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;font-size:12px"><div style="padding:9px;border:1px solid var(--line);border-radius:10px">Break #1 · ${b1?'Used':'Available'}</div><div style="padding:9px;border:1px solid var(--line);border-radius:10px">Break #2 · ${b2?'Used':'Available'}</div></div>
+ ${activeLimit?`<div style="margin-top:14px;padding:12px;border-radius:12px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412"><b>⏱ ${d.current.type==='lunch'?'Lunch':'Break'} in progress</b><div style="font-size:12px;margin-top:3px">${fmt(activeRemaining)} remaining · will return to Ready automatically</div></div>`:''}`;
+ const tbody=document.getElementById('log'); document.getElementById('eventCount').textContent=d.events.length+' event'+(d.events.length===1?'':'s'); tbody.innerHTML=d.events.map(e=>`<tr><td>${new Date(e.ts).toLocaleTimeString()}</td><td>${e.type}</td><td>${e.note||''}</td></tr>`).join('');
+ renderActivityTimeline();
+ document.getElementById('report').textContent=makeReport();
+}
+const ACTIVITY_META={
+ Coding:['💻','Coding'],Learning:['📚','Learning'],'Job Applications':['📨','Job Applications'],'Interview Preparation':['🎤','Interview Preparation'],'Project Work':['🛠️','Project Work'],Other:['📌','Other']
+};
+function activityIntervals(name){
+ const ev=db[today].events, out=[]; let start=null;
+ for(const e of ev){
+  const isStart=(e.type==='activity_start'||e.type==='activity_resume')&&e.note===name;
+  const isEnd=(e.type==='activity_end'||e.type==='activity_pause')&&e.note===name;
+  if(isStart) start=e.ts;
+  else if(isEnd&&start!==null){out.push([start,e.ts]);start=null;}
+ }
+ const d=db[today];
+ if(d.activity===name&&d.activityStarted) out.push([d.activityStarted,now()]);
+ return out;
+}
+function activityTime(name){return activityIntervals(name).reduce((a,x)=>a+Math.max(0,x[1]-x[0]),0)}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function renderActivityTimeline(){
+ const box=document.getElementById('activityTimeline');
+ const ev=db[today].events, items=[];
+ const open={};
+ for(const e of ev){
+  const isStart=e.type==='activity_start'||e.type==='activity_resume';
+  const isEnd=e.type==='activity_end'||e.type==='activity_pause';
+  if(isStart){open[e.note]={start:e.ts,name:e.note};}
+  else if(isEnd&&open[e.note]){items.push({name:e.note,start:open[e.note].start,end:e.ts,paused:e.type==='activity_pause'});delete open[e.note];}
+ }
+ for(const name in open) items.push({name,start:open[name].start,end:now(),live:true});
+ items.sort((a,b)=>b.start-a.start);
+ if(!items.length){box.innerHTML='<div class="empty-log">No activities recorded yet. Start an activity while <b>.ready</b>.</div>';return;}
+ box.innerHTML=items.map(x=>{
+  const meta=ACTIVITY_META[x.name]||['📌',x.name];
+  const endLabel=x.live?'Now':(x.paused?'Paused':new Date(x.end).toLocaleTimeString());
+  const badge=x.live?' <span style="display:inline;color:var(--green);font-weight:800">● LIVE</span>':(x.paused?' <span style="display:inline;color:var(--amber);font-weight:800">● PAUSED</span>':'');
+  return `<div class="timeline-item"><div class="timeline-icon">${meta[0]}</div><div class="timeline-main"><strong>${esc(meta[1])}${badge}</strong><span>${new Date(x.start).toLocaleTimeString()} → ${endLabel}</span></div><div class="timeline-duration">${fmt(x.end-x.start)}</div></div>`;
+ }).join('');
+}
+function makeReport(){
+ const d=db[today];
+ return `WORKDAY DAILY REPORT — ${today}
+----------------------------------------
+Current status: ${d.current?d.current.type:'Logged off'}
+
+Productive/ready time: ${fmt(intervals('ready')+intervals('logon'))}
+Coding:                ${fmt(activityTime('Coding'))}
+Learning:              ${fmt(activityTime('Learning'))}
+Job Applications:      ${fmt(activityTime('Job Applications'))}
+Interview Preparation: ${fmt(activityTime('Interview Preparation'))}
+Project Work:          ${fmt(activityTime('Project Work'))}
+Other:                 ${fmt(activityTime('Other'))}
+
+BREAKS
+60-minute break/lunch: ${fmt(intervals('lunch'))}
+45-minute breaks:      ${fmt(intervals('break45'))} total
+
+EVENTS: ${d.events.length}
+Generated: ${new Date().toLocaleString()}
+`;
+}
+function downloadReport(){download('workday-report-'+today+'.txt',makeReport(),'text/plain')}
+function downloadCSV(){
+ let rows=[['Date','Timestamp','Type','Note']];db[today].events.forEach(e=>rows.push([today,new Date(e.ts).toISOString(),e.type,e.note||'']));
+ download('workday-events-'+today+'.csv',rows.map(r=>r.map(x=>`"${String(x).replaceAll('"','""')}"`).join(',')).join('\\n'),'text/csv')
+}
+function download(name,data,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function clearToday(){if(confirm('Delete all tracking data for today?')){delete db[today];db[today]={events:[],current:null,activity:null,activityStarted:null};save();render()}}
+setInterval(render,1000);render();
+</script>
+</body></html>
