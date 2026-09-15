@@ -75,6 +75,13 @@ h2{font-size:16px;margin:0 0 15px;letter-spacing:-.15px}.status{display:flex;ali
 </section>
 
 <section class="card" style="margin-top:18px">
+<h2>☁️ Cloud sync</h2>
+<div id="syncStatus" class="hint">Cloud sync not configured on this device.</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="dark" onclick="configureSync()">Configure sync</button><button class="primary" onclick="syncNow()">Sync now</button></div>
+<div class="hint">Use the same sync token on your laptop and iPhone. Keep the token private.</div>
+</section>
+
+<section class="card" style="margin-top:18px">
 <h2>Daily report preview</h2>
 <pre id="report"></pre>
 </section>
@@ -87,7 +94,6 @@ let today=localDate();
 if(!db[today]) db[today]={events:[], current:null, activity:null, activityStarted:null, breakFiveMinuteNotified:false};
 if(typeof db[today].breakFiveMinuteNotified!=='boolean') db[today].breakFiveMinuteNotified=false;
 function localDate(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-function save(){localStorage.setItem(KEY,JSON.stringify(db))}
 function now(){return Date.now()}
 function fmt(ms){let s=Math.max(0,Math.floor(ms/1000)),h=Math.floor(s/3600);s%=3600;let m=Math.floor(s/60);s%=60;return (h?h+'h ':'')+(m?m+'m ':'')+s+'s'}
 function minutes(ms){return Math.round(ms/60000)}
@@ -308,6 +314,17 @@ function downloadCSV(){
 function download(name,data,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function clearToday(){if(confirm('Delete all tracking data for today?')){delete db[today];db[today]={events:[],current:null,activity:null,activityStarted:null,breakFiveMinuteNotified:false};save();render()}}
 const PUSH_SERVER='https://my-workday-push-server.onrender.com';
+const SYNC_SERVER=PUSH_SERVER;
+const SYNC_TOKEN_KEY='workday-sync-token-v1';
+let syncBusy=false;
+function getSyncToken(){return localStorage.getItem(SYNC_TOKEN_KEY)||''}
+function setSyncStatus(t){const el=document.getElementById('syncStatus');if(el)el.textContent=t}
+function configureSync(){const current=getSyncToken();const token=prompt('Enter your private WorkDay sync token. Use the same token on your iPhone and laptop.',current);if(token===null)return;const clean=token.trim();if(!clean){alert('Sync token cannot be empty.');return;}localStorage.setItem(SYNC_TOKEN_KEY,clean);setSyncStatus('Sync token saved. Tap Sync now.');syncNow()}
+async function cloudRequest(path,options={}){const token=getSyncToken();if(!token)throw new Error('Sync token not configured.');const headers=Object.assign({'Content-Type':'application/json','X-WorkDay-Token':token},options.headers||{});return fetch(SYNC_SERVER+path,Object.assign({},options,{headers}))}
+async function syncNow(){if(syncBusy)return;const token=getSyncToken();if(!token){setSyncStatus('Cloud sync is not configured.');return;}syncBusy=true;try{const r=await cloudRequest('/state?date='+encodeURIComponent(today));if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Cloud read failed');const remote=await r.json();if(remote.exists&&remote.state){const local=JSON.stringify(db[today]);const rem=JSON.stringify(remote.state);if(local!==rem){const remoteUpdated=remote.updatedAt?Date.parse(remote.updatedAt):0;const localUpdated=Number(localStorage.getItem('workday-last-sync-'+today)||0);if(remoteUpdated>localUpdated){db[today]=remote.state;save();render();}else{await pushTodayState();}}}else{await pushTodayState();}localStorage.setItem('workday-last-sync-'+today,String(Date.now()));setSyncStatus('☁️ Synced just now.');}catch(e){console.warn('Cloud sync failed:',e);setSyncStatus('⚠️ Sync unavailable: '+e.message)}finally{syncBusy=false}}
+async function pushTodayState(){const r=await cloudRequest('/state',{method:'PUT',body:JSON.stringify({date:today,state:db[today]})});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Cloud save failed');localStorage.setItem('workday-last-sync-'+today,String(Date.now()));}
+function save(){localStorage.setItem(KEY,JSON.stringify(db));if(getSyncToken()) pushTodayState().catch(e=>console.warn('Cloud save failed:',e));}
+
 function urlBase64ToUint8Array(base64String){
   const padding='='.repeat((4-base64String.length%4)%4);
   const base64=(base64String+padding).replace(/-/g,'+').replace(/_/g,'/');
@@ -386,5 +403,7 @@ async function sendTestPush(){
 if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('./service-worker.js').catch(console.error); setTimeout(scheduleActiveBreak,1500);});}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden) scheduleActiveBreak();});
 setInterval(render,1000);render();
+window.addEventListener('load',()=>{if(getSyncToken())setTimeout(syncNow,1200);});
+setInterval(()=>{if(!document.hidden&&getSyncToken())syncNow()},15000);
 </script>
 </body></html>
