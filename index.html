@@ -424,17 +424,15 @@ async function getPushSubscription(){
 }
 async function syncServerSchedule(notifications=[]){
   try{
-    if(!('Notification' in window) || Notification.permission!=='granted') return false;
-    const sub=await getPushSubscription();
-    const r=await fetch(PUSH_SERVER+'/schedule',{method:'POST',headers:{'Content-Type':'application/json','X-WorkDay-Token':getSyncToken()},body:JSON.stringify({userId:'default',subscription:sub,notifications})});
+    const token=getSyncToken(); if(!token) return false;
+    const r=await fetch(PUSH_SERVER+'/schedule',{method:'POST',headers:{'Content-Type':'application/json','X-WorkDay-Token':token},body:JSON.stringify({userId:'default',notifications})});
     return r.ok;
   }catch(e){ console.warn('Server scheduling failed:',e); return false; }
 }
 async function cancelServerSchedule(){
   try{
-    if(!('Notification' in window) || Notification.permission!=='granted') return false;
-    const sub=await getPushSubscription();
-    const r=await fetch(PUSH_SERVER+'/schedule/cancel',{method:'POST',headers:{'Content-Type':'application/json','X-WorkDay-Token':getSyncToken()},body:JSON.stringify({userId:'default',endpoint:sub.endpoint})});
+    const token=getSyncToken(); if(!token) return false;
+    const r=await fetch(PUSH_SERVER+'/schedule/cancel',{method:'POST',headers:{'Content-Type':'application/json','X-WorkDay-Token':token},body:JSON.stringify({userId:'default'})});
     return r.ok;
   }catch(e){ console.warn('Server schedule cancel failed:',e); return false; }
 }
@@ -462,9 +460,9 @@ async function enableNotifications(){
 }
 async function sendPushNotification(title, body, tag='my-workday'){
   try{
-    if(!('Notification' in window) || Notification.permission!=='granted') return false;
-    const sub=await getPushSubscription();
-    const r=await fetch(PUSH_SERVER+'/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:'default',broadcast:true,title,body,url:location.href,tag})});
+    const token=getSyncToken();
+    if(!token) return false;
+    const r=await fetch(PUSH_SERVER+'/send',{method:'POST',headers:{'Content-Type':'application/json','X-WorkDay-Token':token},body:JSON.stringify({userId:'default',broadcast:true,title,body,url:location.href,tag})});
     const data=await r.json().catch(()=>({}));
     return !!(r.ok && data.ok && data.sent>0);
   }catch(e){ console.warn('Automatic push failed:',e); return false; }
@@ -479,7 +477,17 @@ async function sendTestPush(){
     alert('✅ Test push sent. Lock the iPhone and check for the notification.');
   }catch(e){alert('Test push failed: '+e.message)}
 }
-if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('./service-worker.js').catch(console.error); setTimeout(scheduleActiveBreak,1500);});}
+if('serviceWorker' in navigator){window.addEventListener('load',()=>{
+  navigator.serviceWorker.register('./service-worker.js').catch(console.error);
+  setTimeout(async()=>{
+    // If this device has already granted notification permission, silently keep its
+    // push subscription registered. No button press is needed after the first grant.
+    if('Notification' in window && Notification.permission==='granted' && getSyncToken()){
+      try{ await getPushSubscription(); }catch(e){ console.warn('Automatic push registration failed:',e); }
+    }
+    scheduleActiveBreak();
+  },1500);
+});}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden) scheduleActiveBreak();});
 setInterval(render,1000);render();
 window.addEventListener('load',()=>{if(getSyncToken())setTimeout(syncNow,1200);});
