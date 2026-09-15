@@ -316,14 +316,89 @@ function clearToday(){if(confirm('Delete all tracking data for today?')){delete 
 const PUSH_SERVER='https://my-workday-push-server.onrender.com';
 const SYNC_SERVER=PUSH_SERVER;
 const SYNC_TOKEN_KEY='workday-sync-token-v1';
+const SYNC_VERSION_KEY='workday-cloud-version-v1-'+today;
+const SYNC_DIRTY_KEY='workday-cloud-dirty-v1-'+today;
+const SYNC_CHANGED_KEY='workday-local-changed-v1-'+today;
+const SYNC_DEVICE_KEY='workday-sync-device-v1';
 let syncBusy=false;
+let syncTimer=null;
 function getSyncToken(){return localStorage.getItem(SYNC_TOKEN_KEY)||''}
+function getDeviceId(){let id=localStorage.getItem(SYNC_DEVICE_KEY);if(!id){id=(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(16).slice(2));localStorage.setItem(SYNC_DEVICE_KEY,id)}return id}
+function getCloudVersion(){return Number(localStorage.getItem(SYNC_VERSION_KEY)||0)}
+function setCloudVersion(v){localStorage.setItem(SYNC_VERSION_KEY,String(Number(v)||0))}
+function markLocalDirty(){localStorage.setItem(SYNC_DIRTY_KEY,'1');localStorage.setItem(SYNC_CHANGED_KEY,String(Date.now()))}
+function isLocalDirty(){return localStorage.getItem(SYNC_DIRTY_KEY)==='1'}
+function clearLocalDirty(){localStorage.removeItem(SYNC_DIRTY_KEY)}
 function setSyncStatus(t){const el=document.getElementById('syncStatus');if(el)el.textContent=t}
-function configureSync(){const current=getSyncToken();const token=prompt('Enter your private WorkDay sync token. Use the same token on your iPhone and laptop.',current);if(token===null)return;const clean=token.trim();if(!clean){alert('Sync token cannot be empty.');return;}localStorage.setItem(SYNC_TOKEN_KEY,clean);setSyncStatus('Sync token saved. Tap Sync now.');syncNow()}
+function configureSync(){const current=getSyncToken();const token=prompt('Enter your private WorkDay sync token. Use the same token on your iPhone and laptop.',current);if(token===null)return;const clean=token.trim();if(!clean){alert('Sync token cannot be empty.');return;}localStorage.setItem(SYNC_TOKEN_KEY,clean);setSyncStatus('Sync token saved. Syncing…');syncNow()}
 async function cloudRequest(path,options={}){const token=getSyncToken();if(!token)throw new Error('Sync token not configured.');const headers=Object.assign({'Content-Type':'application/json','X-WorkDay-Token':token},options.headers||{});return fetch(SYNC_SERVER+path,Object.assign({},options,{headers}))}
-async function syncNow(){if(syncBusy)return;const token=getSyncToken();if(!token){setSyncStatus('Cloud sync is not configured.');return;}syncBusy=true;try{const r=await cloudRequest('/state?date='+encodeURIComponent(today));if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Cloud read failed');const remote=await r.json();if(remote.exists&&remote.state){const local=JSON.stringify(db[today]);const rem=JSON.stringify(remote.state);if(local!==rem){const remoteUpdated=remote.updatedAt?Date.parse(remote.updatedAt):0;const localUpdated=Number(localStorage.getItem('workday-last-sync-'+today)||0);if(remoteUpdated>localUpdated){db[today]=remote.state;save();render();}else{await pushTodayState();}}}else{await pushTodayState();}localStorage.setItem('workday-last-sync-'+today,String(Date.now()));setSyncStatus('☁️ Synced just now.');}catch(e){console.warn('Cloud sync failed:',e);setSyncStatus('⚠️ Sync unavailable: '+e.message)}finally{syncBusy=false}}
-async function pushTodayState(){const r=await cloudRequest('/state',{method:'PUT',body:JSON.stringify({date:today,state:db[today]})});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Cloud save failed');localStorage.setItem('workday-last-sync-'+today,String(Date.now()));}
-function save(){localStorage.setItem(KEY,JSON.stringify(db));if(getSyncToken()) pushTodayState().catch(e=>console.warn('Cloud save failed:',e));}
+function mergeStates(local,remote){
+  const merged=JSON.parse(JSON.stringify(remote||local||{}));
+  const le=Array.isArray(local?.events)?local.events:[], re=Array.isArray(remote?.events)?remote.events:[];
+  const key=e=>JSON.stringify([e.ts,e.type,e.note||'']);
+  const seen=new Set(re.map(key));
+  merged.events=[...re,...le.filter(e=>!seen.has(key(e)))].sort((a,b)=>(a.ts||0)-(b.ts||0));
+  const ls=Number(local?.current?.start||0), rs=Number(remote?.current?.start||0);
+  if(ls>=rs) merged.current=local?.current?JSON.parse(JSON.stringify(local.current)):null;
+  merged.activity=ls>=rs?local?.activity??null:remote?.activity??null;
+  merged.activityStarted=ls>=rs?local?.activityStarted??null:remote?.activityStarted??null;
+  merged.breakFiveMinuteNotified=!!(local?.breakFiveMinuteNotified||remote?.breakFiveMinuteNotified);
+  return merged;
+}
+async function syncNow(){
+  if(syncBusy)return;
+  const token=getSyncToken();
+  if(!token){setSyncStatus('Cloud sync is not configured.');return;}
+  syncBusy=true;
+  try{
+    const r=await cloudRequest('/state?date='+encodeURIComponent(today));
+    if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Cloud read failed');
+    const remote=await r.json();
+    if(!remote.exists||!remote.state){
+      await pushTodayState(0);
+      setSyncStatus('☁️ Synced just now.');
+      return;
+    }
+    const remoteVersion=Number(remote.version||0), localVersion=getCloudVersion();
+    const same=JSON.stringify(db[today])===JSON.stringify(remote.state);
+    if(same){setCloudVersion(remoteVersion);clearLocalDirty();setSyncStatus('☁️ Synced just now.');return;}
+    if(!isLocalDirty() && remoteVersion>=localVersion){
+      db[today]=remote.state;
+      localStorage.setItem(KEY,JSON.stringify(db));
+      setCloudVersion(remoteVersion);
+      render();
+      setSyncStatus('☁️ Synced just now.');
+      return;
+    }
+    const merged=mergeStates(db[today],remote.state);
+    db[today]=merged;
+    localStorage.setItem(KEY,JSON.stringify(db));
+    await pushTodayState(remoteVersion);
+    render();
+    setSyncStatus('☁️ Synced with both devices merged.');
+  }catch(e){
+    if(e.status===409){}
+    console.warn('Cloud sync failed:',e);
+    setSyncStatus('⚠️ Sync unavailable: '+e.message);
+  }finally{syncBusy=false;}
+}
+async function pushTodayState(expectedVersion=getCloudVersion()){
+  const r=await cloudRequest('/state',{method:'PUT',body:JSON.stringify({date:today,state:db[today],expectedVersion,clientChangedAt:Number(localStorage.getItem(SYNC_CHANGED_KEY)||Date.now()),clientId:getDeviceId()})});
+  if(r.status===409){
+    const conflict=await r.json().catch(()=>({}));
+    if(conflict.version!==undefined){setCloudVersion(conflict.version);}
+    throw new Error('Another device changed this day; retrying sync');
+  }
+  if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Cloud save failed');
+  const data=await r.json();
+  setCloudVersion(data.version||expectedVersion);
+  clearLocalDirty();
+  localStorage.setItem(SYNC_CHANGED_KEY,String(Date.now()));
+}
+function save(){
+  localStorage.setItem(KEY,JSON.stringify(db));
+  if(getSyncToken()){markLocalDirty();if(!syncTimer){syncTimer=setTimeout(()=>{syncTimer=null;pushTodayState(getCloudVersion()).then(()=>setSyncStatus('☁️ Synced just now.')).catch(e=>{console.warn('Cloud save failed:',e);syncNow()})},200);}}
+}
 
 function urlBase64ToUint8Array(base64String){
   const padding='='.repeat((4-base64String.length%4)%4);
