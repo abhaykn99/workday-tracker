@@ -59,7 +59,7 @@ h2{font-size:16px;margin:0 0 15px;letter-spacing:-.15px}.status{display:flex;ali
   <div id="breaks"></div>
   <div class="actions">
     <button onclick="enableNotifications()" class="dark">🔔 Enable notifications</button><button onclick="sendTestPush()" class="primary">🧪 Test push</button>
-    <button onclick="downloadCSV()">Export CSV</button>
+    <button onclick="downloadCSV()">Export Today CSV</button>
     <button onclick="downloadReport()">Daily report</button>
     <button onclick="clearToday()" class="danger">Clear today</button>
   </div>
@@ -142,6 +142,8 @@ function cmd(type){
    const summary=`WorkDay finished. Ready/productive: ${fmt(intervals('ready')+intervals('logon'))}. Coding: ${fmt(activityTime('Coding'))}. Learning: ${fmt(activityTime('Learning'))}. Job applications: ${fmt(activityTime('Job Applications'))}.`;
    sendPushNotification('🔴 My WorkDay',summary+' Daily report is ready.','logoff-'+today);
    cancelServerSchedule();
+   exportTodayCSV(true);
+   save(); render();
    return;
  }
  if(type==='logon'){
@@ -325,9 +327,29 @@ Generated: ${new Date().toLocaleString()}
 `;
 }
 function downloadReport(){download('workday-report-'+today+'.txt',makeReport(),'text/plain')}
-function csvText(rows){return rows.map(r=>r.map(x=>`"${String(x??'').replaceAll('"','""')}"`).join(',')).join('\\n')}
-function downloadCSV(){exportRawEventsCSV()}
-function exportRawEventsCSV(dates=getReportDates()){let rows=[['Date','Timestamp','Type','Note']];dates.forEach(date=>(db[date]?.events||[]).forEach(e=>rows.push([date,new Date(e.ts).toISOString(),e.type,e.note||''])));download('workday-events-'+dates[0]+'-to-'+dates.at(-1)+'.csv',csvText(rows),'text/csv')}
+function csvText(rows){return rows.map(r=>r.map(x=>`"${String(x??'').replaceAll('"','""')}"`).join(',')).join('\n')}
+function exportTodayCSV(auto=false){
+ const date=today, state=db[date]||{events:[]};
+ const rows=[['Date','Timestamp','Type','Note']];
+ (state.events||[]).forEach(e=>rows.push([date,new Date(e.ts).toISOString(),e.type,e.note||'']));
+ const csv=csvText(rows), filename='my-workday-'+date+'.csv';
+ const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}), url=URL.createObjectURL(blob);
+ const a=document.createElement('a'); a.href=url; a.download=filename; a.rel='noopener';
+ a.style.display='none'; document.body.appendChild(a); a.click(); a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),1500);
+ if(auto && /iPhone|iPad|iPod/i.test(navigator.userAgent)){
+   setTimeout(()=>{
+     if(navigator.share && navigator.canShare){
+       try{
+         const file=new File([csv],filename,{type:'text/csv'});
+         if(navigator.canShare({files:[file]})){ navigator.share({files:[file],title:'My WorkDay — Today CSV'}).catch(()=>{}); return; }
+       }catch(e){}
+     }
+     alert('Today CSV is ready. If it did not download automatically, tap “Export Today CSV” to save/share it.');
+   },300);
+ }
+}
+function downloadCSV(){exportTodayCSV(false)}
 function dateOnly(d){return new Date(d.getFullYear(),d.getMonth(),d.getDate())}
 function isoDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function getReportDates(){
