@@ -384,7 +384,24 @@ async function syncReportDates(){
  try{const r=await cloudRequest('/states?from='+encodeURIComponent(dates[0])+'&to='+encodeURIComponent(dates.at(-1)));if(!r.ok)return;const data=await r.json();for(const item of (data.states||[])){db[item.date]=mergeStates(db[item.date],item.state)}}catch(e){console.warn('Report range sync failed',e)}
  localStorage.setItem(KEY,JSON.stringify(db));
 }
-function download(name,data,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+async function download(name,data,type){
+ const blob=new Blob([data],{type:type+';charset=utf-8'});
+ // iPhone/iPad standalone PWAs may not reliably download a Blob URL directly.
+ // Prefer the native share sheet when available, otherwise use a real DOM link.
+ try{
+  if(navigator.share && typeof File!=='undefined'){
+   const file=new File([blob],name,{type:type+';charset=utf-8'});
+   if(!navigator.canShare || navigator.canShare({files:[file]})){
+    await navigator.share({files:[file],title:name});
+    return;
+   }
+  }
+ }catch(e){ if(e && e.name==='AbortError') return; console.warn('Share failed, falling back to download',e); }
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');a.href=url;a.download=name;a.rel='noopener';a.style.display='none';
+ document.body.appendChild(a);a.click();
+ setTimeout(()=>{a.remove();URL.revokeObjectURL(url)},1500);
+}
 function clearToday(){if(confirm('Delete all tracking data for today?')){delete db[today];db[today]={events:[],current:null,activity:null,activityStarted:null,breakFiveMinuteNotified:false};save();render()}}
 const PUSH_SERVER='https://my-workday-push-server.onrender.com';
 const SYNC_SERVER=PUSH_SERVER;
